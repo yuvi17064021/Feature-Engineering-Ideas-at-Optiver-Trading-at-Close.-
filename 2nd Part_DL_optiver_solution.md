@@ -1,8 +1,10 @@
-# Confirmed Interpretation of the First-Place Optiver Solution
+# Confirmed Interpretation of the Deep Learning Optiver Solution
 
 ## Overview
 
-The full write-up and the author’s comments remove the remaining ambiguities. They also confirm one correction to the previous review: **the live winning submission completed four online-learning updates**, because the fifth update caused the notebook to exceed the runtime limit.
+The full write-up and the author's comments remove the remaining ambiguities. They also confirm one correction to the previous review:
+
+**The live winning submission completed four online-learning updates because the fifth update caused the notebook to exceed the runtime limit.**
 
 ---
 
@@ -10,15 +12,12 @@ The full write-up and the author’s comments remove the remaining ambiguities. 
 
 Before post-processing, the final prediction was:
 
-$$
-\hat{y}
-=
-0.5\hat{y}_{\text{CatBoost}}
-+
-0.3\hat{y}_{\text{GRU}}
-+
-0.2\hat{y}_{\text{Transformer}}.
-$$
+```text
+Final Prediction =
+0.5 × CatBoost
++ 0.3 × GRU
++ 0.2 × Transformer
+```
 
 The weights were chosen using the holdout validation set.
 
@@ -37,7 +36,7 @@ one timestamp × 200 stocks × 300 features
 
 Therefore:
 
-> “Same 300 features” does not mean identical input tensors.
+> "Same 300 features" does not mean identical input tensors.
 
 ---
 
@@ -52,7 +51,9 @@ Validation: final 81 days
 
 This was not five-fold cross-validation. It was one time-ordered train-validation split.
 
-This is appropriate for the problem because random splitting could allow information from later market regimes to influence validation indirectly. The author reported that the validation score aligned well with the leaderboard, so the holdout was used to select:
+This is appropriate for the problem because random splitting could allow information from later market regimes to influence validation indirectly.
+
+The author reported that the validation score aligned well with the leaderboard, so the holdout was used to select:
 
 - Features
 - Models
@@ -72,21 +73,24 @@ otherwise                -> group 2
 
 Therefore:
 
-- **Group 0:** 0 to 290 seconds
-- **Group 1:** 300 to 470 seconds
-- **Group 2:** 480 to 540 seconds
+```text
+Group 0: 0 to 290 seconds
+Group 1: 300 to 470 seconds
+Group 2: 480 to 540 seconds
+```
 
 ### First-Value Ratio
 
-For each feature $x$, date $d$, stock $i$, time $t$, and phase $g$:
+For each feature:
 
-$$
-F^{\text{first-ratio}}_{d,i,t}
-=
-\frac{x_{d,i,t_g^{\text{first}}}}{x_{d,i,t}}.
-$$
+```text
+first_ratio =
+(first value within the phase)
+/
+(current value)
+```
 
-The direction is important. It is:
+The direction is important.
 
 ```text
 first value / current value
@@ -98,33 +102,55 @@ not:
 current value / first value
 ```
 
-For example, suppose imbalance size is 800 at the beginning of the phase and its current value is 1,000:
+Example:
 
-$$
-\frac{800}{1000}=0.8.
-$$
+```text
+Beginning of phase = 800
+Current value      = 1000
 
-A value below 1 means the current value is larger than the phase’s initial value.
+first_ratio = 800 / 1000 = 0.8
+```
+
+A value below 1 means the current value is larger than the phase's initial value.
+
+---
 
 ### Rolling-Mean Ratio
 
 The second feature is:
 
-$$
-F^{\text{rolling-ratio}}_{d,i,t}
-=
-\frac{\operatorname{RollingMean}_{100}(x_{d,i,t})}{x_{d,i,t}}.
-$$
+```text
+rolling_ratio =
+rolling_mean_100(feature)
+/
+current_feature_value
+```
 
-Although its alias says `group_expanding_mean100`, the actual operation is:
+Although the alias says:
+
+```text
+group_expanding_mean100
+```
+
+the actual implementation is:
 
 ```python
 rolling_mean(100, min_periods=1)
 ```
 
-It is therefore a rolling mean with a maximum window of 100 rows, not an unlimited expanding mean.
+Therefore it is a rolling mean with a maximum window of 100 rows rather than an unlimited expanding mean.
 
-Because the calculation is performed within one stock, one date, and one auction phase, it restarts at each phase boundary.
+Because the calculation is performed within one:
+
+```text
+stock
++
+date
++
+auction phase
+```
+
+it restarts at every phase boundary.
 
 ---
 
@@ -142,79 +168,83 @@ In other words, they compare all stocks observed at the same instant.
 
 The code calculates:
 
-$$
-F^{\text{mean-ratio}}_{i,t}
-=
-\frac{\overline{x}_t}{x_{i,t}},
-$$
-
-where:
-
-$$
-\overline{x}_t
-=
-\frac{1}{N_t}\sum_{j=1}^{N_t}x_{j,t}.
-$$
-
-Again, the direction matters. It is:
-
 ```text
-mean across stocks / current stock value
+mean_ratio =
+(mean value across all stocks)
+/
+(current stock value)
 ```
 
 Interpretation:
 
-- $F < 1$: the stock value is above the cross-sectional mean.
-- $F > 1$: the stock value is below the cross-sectional mean.
-- $F \approx 1$: the stock value is close to the mean.
+```text
+mean_ratio < 1
+    stock value is above average
+
+mean_ratio > 1
+    stock value is below average
+
+mean_ratio ≈ 1
+    stock value is near average
+```
+
+---
 
 ### Cross-Sectional Ordinal Rank
 
 The rank feature is:
 
-$$
-F^{\text{rank}}_{i,t}
-=
-\frac{\operatorname{RankDescending}(x_{i,t})}{N_t}.
-$$
+```text
+rank =
+descending_rank
+/
+number_of_stocks
+```
 
-Because `descending=True` is used:
+Because descending ranking is used:
 
-- The highest feature value receives rank 1.
-- The second-highest receives rank 2.
-- The lowest receives rank $N_t$.
+```text
+Highest value  -> Rank 1
+Second highest -> Rank 2
+Lowest value   -> Rank N
+```
 
 For 200 stocks:
 
 ```text
-Highest value:  1 / 200   = 0.005
-Middle value:   100 / 200 ≈ 0.50
-Lowest value:   200 / 200 = 1.00
+Highest value :   1 / 200 = 0.005
+Middle value  : 100 / 200 = 0.50
+Lowest value  : 200 / 200 = 1.00
 ```
 
-Therefore, a rank near zero means a relatively high raw feature value. A rank near one means a relatively low raw value.
+Therefore:
+
+```text
+Rank near 0 -> unusually high raw value
+Rank near 1 -> unusually low raw value
+```
 
 ---
 
 ## 5. GRU Structure
 
-The GRU input was:
+The GRU input shape was:
 
-$$
-X_{\text{GRU}} \in \mathbb{R}^{B \times 55 \times F},
-$$
+```text
+(B, 55, F)
 
-where:
+B = batch size
+55 = auction timesteps
+F = number of selected features (~300)
+```
 
-- $B$ is the batch size.
-- 55 is the number of 10-second observations in one auction day.
-- $F$ is the selected feature dimension, approximately 300.
+The model contained four GRU layers.
 
-The model contained four GRU layers and produced:
+Output shape:
 
-$$
-\hat{Y}_{\text{GRU}} \in \mathbb{R}^{B \times 55}.
-$$
+```text
+(B, 55)
+```
 
 This is a causal sequence-to-sequence setup:
 
@@ -227,43 +257,49 @@ t = 540 -> prediction for t = 540
 
 The author explicitly confirmed:
 
-> “Yes, it’s seq2seq model but not bidirection for avoiding label leak.”
+> "Yes, it's seq2seq model but not bidirection for avoiding label leak."
 
-This is important. A bidirectional GRU at an intermediate timestep could inspect later auction observations. The causal GRU processes only information available up to the current timestep.
+This is important because a bidirectional GRU could use future auction information when predicting an earlier timestep.
+
+A causal GRU only processes information available up to the current timestep.
 
 ### Why Use the Last Timestep During Inference?
 
-When the model is passed a sequence containing all currently available observations, the required prediction is the final available output:
+During inference:
 
 ```python
 prediction = output[:, -1]
 ```
 
-If observations from seconds 0 through 200 are currently available, “last” means the prediction at second 200. It does not necessarily mean second 540.
+If observations currently exist only up to second 200:
 
-The hidden state is zero-initialised at the beginning of each trading day. It is not carried indefinitely between days.
+```text
+Last timestep
+=
+prediction at second 200
+```
+
+It does not necessarily mean second 540.
+
+The hidden state is reset at the beginning of each trading day.
 
 ---
 
 ## 6. Transformer Structure
 
-The Transformer input was:
+Transformer input shape:
 
-$$
-X_{\text{Transformer}}
-\in
-\mathbb{R}^{B \times 200 \times F}.
-$$
+```text
+(B, 200, F)
 
-Here:
+B = date-time snapshots
+200 = stocks
+F = selected features
+```
 
-- $B$ represents different date-and-time snapshots.
-- 200 is the stock dimension.
-- $F$ is the selected feature dimension.
+The Transformer attends across stocks, not across time.
 
-The Transformer attends across **stocks**, not across the 55 auction timesteps.
-
-At a particular moment:
+At one timestamp:
 
 ```text
 Token 1   = Stock 0
@@ -272,71 +308,68 @@ Token 2   = Stock 1
 Token 200 = Stock 199
 ```
 
-It outputs all stock predictions together:
-
-$$
-\hat{Y}_{\text{Transformer}}
-\in
-\mathbb{R}^{B \times 200}.
-$$
-
-The intended division is:
+Output shape:
 
 ```text
-GRU         -> sequence information over time
-Transformer -> information across different stocks
+(B, 200)
 ```
 
-The Transformer used four standard Transformer encoder layers rather than a specialised tabular model.
+The intended separation was:
+
+```text
+GRU         -> temporal relationships
+Transformer -> cross-sectional relationships
+```
+
+The model used four standard Transformer encoder layers.
 
 ### Transformer Mean Correction
 
-The model applies:
+The implementation applies:
 
 ```python
 out = out - out.mean(1, keepdim=True)
 ```
 
-For each market snapshot:
+Conceptually:
 
-$$
-\widetilde{y}_{i,t}
-=
-\hat{y}_{i,t}
+```text
+adjusted_prediction =
+prediction
 -
-\frac{1}{N}\sum_{j=1}^{N}\hat{y}_{j,t}.
-$$
+(mean prediction across all stocks)
+```
 
-Consequently:
+Therefore:
 
-$$
-\sum_i \widetilde{y}_{i,t}=0.
-$$
+```text
+Sum of adjusted predictions across stocks = 0
+```
 
-This removes the common level from the Transformer’s cross-sectional predictions and encourages it to predict which stocks outperform or underperform their peers.
+This removes the common market component and encourages the model to predict relative stock performance.
 
 ---
 
 ## 7. Why CatBoost, GRU, and Transformer Complement One Another
 
-Each model receives related information but imposes a different inductive bias.
+Each model receives similar information but applies a different inductive bias.
 
 ### CatBoost
 
-CatBoost learns nonlinear interactions such as:
+CatBoost learns nonlinear feature interactions such as:
 
 ```text
 high imbalance
 + narrow spread
 + late auction phase
-+ unusual cross-sectional rank
++ unusual rank
 ```
 
-It treats the engineered row as a tabular observation.
+It views the engineered row as a tabular sample.
 
 ### GRU
 
-The GRU learns the path followed by one stock:
+The GRU learns temporal evolution:
 
 ```text
 imbalance increasing
@@ -345,38 +378,54 @@ matched volume accelerating
 price pressure persisting
 ```
 
-It can distinguish two stocks that currently look similar but arrived at the current state through different paths.
+Two stocks may have identical current features but different histories.
+
+The GRU can distinguish between them.
 
 ### Transformer
 
-The Transformer learns whether a signal is stock-specific or shared across the market:
+The Transformer learns cross-stock relationships:
 
 ```text
-Is this stock’s pressure unusual relative to other stocks?
-Which stocks are moving together?
-Is the apparent movement simply a market-wide effect?
+Is this pressure unusual?
+Are stocks moving together?
+Is this just a market-wide effect?
 ```
 
-The blend therefore covers:
+The ensemble therefore combines:
 
 ```text
-nonlinear tabular relationships
-+ temporal relationships
-+ cross-sectional relationships
+tabular nonlinearities
++
+temporal relationships
++
+cross-sectional relationships
 ```
 
 ---
 
 ## 8. Feature Selection
 
-The author generated a larger candidate feature pool and selected the top 300 using CatBoost feature importance.
+The author generated a larger candidate feature library and selected the top 300 using CatBoost feature importance.
 
-The comments explain the practical choice of 300:
+The comments indicate:
 
-- 300 features performed better than 200 on validation.
-- 400 features created memory problems.
+```text
+300 features performed better than 200
+400 features created memory issues
+```
 
-The final count was therefore a validation-and-compute trade-off rather than a theoretically optimal number of features.
+Therefore the final choice was a balance between:
+
+```text
+validation performance
++
+runtime constraints
++
+memory limits
+```
+
+rather than a theoretically optimal feature count.
 
 ---
 
@@ -385,49 +434,57 @@ The final count was therefore a validation-and-compute trade-off rather than a t
 The complete write-up confirms:
 
 ```text
-Update frequency:  every 12 test days
-Planned updates:   5
+Update frequency : every 12 test days
+Planned updates  : 5
 Completed updates: 4
 ```
 
 At each update:
 
-- CatBoost was retrained from scratch.
-- The GRU was fine-tuned.
-- The Transformer was fine-tuned.
+- CatBoost retrained from scratch
+- GRU fine-tuned
+- Transformer fine-tuned
 
-The delayed historical targets available during inference made this possible.
-
-Conceptually:
+Workflow:
 
 ```text
-Predict days 1 to 12
+Predict days 1-12
 ↓
-Receive their delayed targets
+Receive delayed targets
 ↓
-Append the newly labelled observations
+Append newly labelled data
 ↓
-Retrain CatBoost and fine-tune the neural networks
+Retrain / fine-tune models
 ↓
-Predict the next block
+Predict next block
 ```
 
-The fifth update caused the best submission to exceed the runtime limit. The author therefore implemented a runtime guard that skipped online retraining once total inference time reached a chosen threshold. This resulted in four completed updates.
+The fifth update exceeded notebook runtime limits.
 
-Therefore, the earlier explanation stating that **four full updates completed** was correct.
+A runtime guard therefore skipped further online retraining beyond a predefined threshold.
+
+As a result:
+
+```text
+Completed updates = 4
+```
 
 ---
 
 ## 10. Daily-File Memory Technique
 
-The important element was not simply the use of HDF5. The main idea was to avoid constructing several enormous intermediate DataFrames while combining historical data and revealed test data.
+The important idea was not merely HDF5 storage.
 
-The author:
+The key objective was to avoid building several massive intermediate DataFrames.
 
-1. Saved engineered features separately for each day.
-2. Preallocated one `float32` NumPy array.
-3. Loaded each daily matrix sequentially.
-4. Copied it directly into the correct array slice.
+The process was:
+
+1. Save engineered features separately for each day.
+2. Allocate one large Float32 NumPy array.
+3. Load each daily matrix sequentially.
+4. Copy it into the correct position.
+
+Example:
 
 ```python
 res = np.empty(
@@ -440,56 +497,71 @@ for date_id in all_date_ids:
     res[start:end, :] = daily_data
 ```
 
-This reduces the peak memory overhead associated with DataFrame concatenation and allows the 300-feature dataset to be used during online retraining.
+Benefits:
+
+```text
+Lower memory usage
+Avoid DataFrame concatenation overhead
+Enable online retraining
+Support 300-feature dataset
+```
 
 ---
 
 ## 11. Final Weighted Post-Processing
 
-After blending the three models, the author calculated:
+After blending predictions:
 
-$$
-\mu_w
-=
-\frac{\sum_i w_i\hat{y}_i}{\sum_i w_i},
-$$
+```text
+weighted_mean =
+Σ(weight × prediction)
+/
+Σ(weight)
+```
 
-followed by:
+Then:
 
-$$
-\hat{y}^{\text{final}}_i
-=
-\hat{y}_i-\mu_w.
-$$
+```text
+final_prediction =
+prediction
+-
+weighted_mean
+```
 
 This guarantees:
 
-$$
-\sum_i w_i\hat{y}^{\text{final}}_i=0.
-$$
-
-This differs from the Transformer’s internal ordinary-mean correction:
-
 ```text
-Transformer correction: equal weight for every stock
-Final correction:       competition-specific stock weights
+Weighted sum of final predictions = 0
 ```
 
-A comment from the 14th-place participant provides supporting evidence that this weighted correction mattered. Their score reportedly changed from **5.4457** to **5.4405** after applying it.
+This differs from the Transformer's internal correction:
+
+```text
+Transformer:
+equal-weight average
+
+Final post-processing:
+competition stock weights
+```
+
+The weighted correction reportedly improved leaderboard performance.
 
 ---
 
 ## 12. Approaches That Did Not Work
 
-The author tested and rejected:
+The author experimented with:
 
-- Adding 1D CNN or MLP predictions to the ensemble.
-- Feeding multiple days into the GRU rather than one day.
-- Using a larger Transformer such as DeBERTa.
-- Predicting the target bucket mean with a gradient-boosted decision tree.
-- Using a second-level stacking model instead of a weighted sum.
+- 1D CNN ensemble members
+- MLP ensemble members
+- Multi-day GRU sequences
+- Larger Transformers such as DeBERTa
+- Gradient-boosted trees on bucket averages
+- Second-level stacking models
 
-The author’s stated reason for avoiding stacking was that it required more time and did not help substantially in practice.
+These approaches were ultimately rejected.
+
+The author indicated that stacking added complexity without meaningful improvement.
 
 ---
 
@@ -513,16 +585,16 @@ Periodic online retraining using revealed targets
 Stock-weighted post-processing
 ```
 
-The strongest lesson is that the win did not come from one complex architecture. It came from representing the problem along its two natural dimensions:
+The strongest lesson is that the win did not come from one unusually complex architecture.
 
-$$
-\boxed{\text{one stock through time}}
-\qquad\text{and}\qquad
-\boxed{\text{many stocks at the same time}}.
-$$
+Instead, it came from modelling the problem along its two natural dimensions:
 
-That is why the GRU and Transformer were organised differently even though they shared the same 300 feature definitions.
+```text
+GRU:
+    one stock through time
 
-## Reference
+Transformer:
+    many stocks at the same time
+```
 
-The relevant first-place write-up link is recorded in the user’s [DS and DL and Options Notes in OneNote](https://arup-my.sharepoint.com/personal/yuvraj_singh_arup_com/_layouts/15/Doc.aspx?action=edit&mobileredirect=true&wdorigin=Sharepoint&DefaultItemOpen=1&sourcedoc=%7B78bdc142-9152-4f48-874a-41d4ee13b7fd%7D&wd=target%28/DS%20and%20DL%20and%20Options%20Notes.one/%29&wdpartid=%7B9de81546-e54f-4aa5-bea5-5080d552a91a%7D%7B1%7D&wdsectionfileid=%7B413c7a93-b710-4f71-a909-84b7303132ae%7D&EntityRepresentationId=6926aae6-28bf-4d23-a134-060abd3824c7).
+That is why the GRU and Transformer were organised differently even though both were built from the same 300 feature definitions.
