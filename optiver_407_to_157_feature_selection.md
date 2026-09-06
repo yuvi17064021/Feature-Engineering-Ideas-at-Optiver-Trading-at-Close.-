@@ -1,4 +1,4 @@
-# Optiver 9th-Place Solution: From 407 Engineered Columns to 157 XGBoost Features
+# Optiver Solution: From 407 Engineered Columns to 157 XGBoost Features
 
 ## Overview
 
